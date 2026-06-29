@@ -16,9 +16,20 @@ public class NavController : MonoBehaviour
     [Header("Panels to Show per Nav Item")]
     public GameObject[] linkedPanels;
 
+    [Header("Dashboard Panels — hidden when Simulation/History is active")]
+    public GameObject[] dashboardPanels;
+
     [Header("Alert Badge")]
     public GameObject alertBadge;
     public TMP_Text   badgeCount;
+
+    [Header("Runtime Registrations")]
+    private SimulationController _simController;
+
+    [Header("3D Scene Components — disabled when Simulation is open")]
+    public OrbitCamera   orbitCamera;
+    public IdleOrbit     idleOrbit;
+    public Camera        simPackCamera;   // Visualization panel secondary camera
 
     private int _activeIndex = 0;
 
@@ -60,6 +71,50 @@ public class NavController : MonoBehaviour
             if (linkedPanels != null && i < linkedPanels.Length && linkedPanels[i] != null)
                 linkedPanels[i].SetActive(active);
         }
+
+        // Hide dashboard panels (Right/CellVoltages/ViewModes) when Simulation or History is active.
+        // They re-show when the user returns to Overview.
+        bool hideDashboard = index == 5 /*Simulation*/ || index == 7 /*History*/;
+        if (dashboardPanels != null)
+        {
+            foreach (var p in dashboardPanels)
+            {
+                if (p != null) p.SetActive(!hideDashboard);
+            }
+        }
+
+        // Disable orbit camera when Simulation or History page is active
+        // so the mouse does not accidentally control the 3D view.
+        if (orbitCamera   != null) orbitCamera.enabled   = !hideDashboard;
+        if (idleOrbit    != null) idleOrbit.enabled    = !hideDashboard;
+        if (simPackCamera != null) simPackCamera.enabled = hideDashboard;  // on when sim page open
+
+        // Notify the simulation controller when the Simulation tab is opened/closed.
+        if (_simController != null)
+            _simController.SetSimPageOpen(index == 5);
+    }
+
+    /// <summary>
+    /// Register a panel that was created at runtime (e.g. Panel_Simulation).
+    /// </summary>
+    public void RegisterPanel(int index, GameObject panel)
+    {
+        if (linkedPanels == null || index < 0 || index >= linkedPanels.Length) return;
+        linkedPanels[index] = panel;
+
+        // If this index is currently active, make sure the new panel state is honoured.
+        if (_activeIndex == index && panel != null)
+            panel.SetActive(true);
+    }
+
+    /// <summary>
+    /// Register the runtime SimulationController so nav switches can pause/resume it.
+    /// </summary>
+    public void RegisterSimulationController(SimulationController ctrl)
+    {
+        _simController = ctrl;
+        if (_simController != null)
+            _simController.SetSimPageOpen(_activeIndex == 5);
     }
 
     // Call this from AlarmManager when new alarms come in

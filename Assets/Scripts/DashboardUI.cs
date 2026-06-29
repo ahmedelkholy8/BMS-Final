@@ -68,9 +68,11 @@ public class DashboardUI : MonoBehaviour
 
     void UpdateTopBar()
     {
-         Debug.Log($"[UI] SOC:{bmsController.GetSOC():F3} " +
-              $"V:{bmsController.GetPackVoltage():F2} " +
-              $"T:{bmsController.GetTemperature():F1}");
+        /*
+        Debug.Log($"[UI] SOC:{bmsController.GetSOC():F3} " +
+            $"V:{bmsController.GetPackVoltage():F2} " +
+            $"T:{bmsController.GetTemperature():F1}");
+        */
 
         if (valSOC != null)
             valSOC.text = $"{(bmsController.GetSOC() * 100f):F0}%";

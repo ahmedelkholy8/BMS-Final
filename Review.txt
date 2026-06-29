@@ -1,0 +1,96 @@
+WHAT STILL WORKS
+
+Core BMS system
+BmsData, BmsController, BmsEffectList, AlarmsBanner, NotificationBanner, SystemBanner — all compiling, live MQTT + simulated data, alarms firing correctly.
+
+3D scene visuals
+CellChargeShader with `BaseColor` + `Emission` based on SoC 0-100%. Dark environment, neon grid, 3 dynamic point lights (GreenLight, BlueLight, dark PCB board).
+
+View modes
+Overall: Thermal, Balancing — all work. In ViewModeChange: Thermal gradient correct. Balancing pulses per cell correctly. Override flag properly set/cleared.
+
+Post-processing
+Global URP volume: Bloom (0.2 intensity), cyan tint, ACES tone-mapping, Vignette. Color Adjustments, Chromatic Aberration, Tonemapping, Main Camera, SSAO on PC render.
+
+Tube particle system
+Green particles, blue flame (discharge) / cyan (charge) particles with correct directions after the swap fix. Particle speed scales with current.
+
+Cell hover tooltip
+Cell tooltip appears for all 8 cells. Shows Temperature, SOC, SOH with green/yellow/red status dots. Follows cursor, clamps to screen. Works in all view modes.
+
+Simulation engine
+SimulationData, SimulationEngine, SimulationStateManager, ThermalSimulation, ThermalThreshold — all compiled, zero errors. Pre-compute architecture in place.
+
+Simulation UI hierarchy
+Full Panel Simulation: built: left column with system status + 3D, right column with firing controls (visualization — 4 graphs + KPI), right (what if table, alerts, thermal map).
+
+Idle auto-orbit
+IdleOrbit on Main Camera — orbits at 0.5°/s after 4s idle, stops on mouse input. YouTbeffset exposed on OrbitCamera.
+
+CONFIRMED BUGS AND MISSING CONNECTIONS
+
+**Bug** Panel.Simulation is always visible — blocks the 3D scene
+Panel.Simulation is active on startup and covers the entire screen (anchors 0.0 → 1.1). NavBtn.Simulation link to NULL — clicking it does nothing. The new window never hides/show; this panel is the 3D scene is invisible in on launch.
+
+**Bug** SimulationController lives on its own orphan GameObject
+It’s on a GO called “SimulationController” floating in the scene root, not on BatteryPanel. SimulationUI is also on a floating GO. Neither is part of Panel.Simulation’s hierarchy, so no nav page show/hide won’t affect them correctly. SimulationController.SetSimPageOpen() is never called.
+
+**Bug** NavController panels array is mostly NULL
+Only NavBms, Overview — Panel, Right and NavBtn_History — Panel, History are wired. NavBtn_Simulation — NULL meaning clicking Simulation does nothing. All other nav buttons (Cells, Hardware, Telemetry, Analytics, Alerts, Settings) also have NULL panels.
+
+**Issue** SimulationUI slider refs point to wrong components
+The left feeds slider, sliderAmbient etc. in SimulationUI reference the Slider child components inside each row — need to verify all 3 sliders and both dropdowns are correctly wired, and that the severity `slider` maps correctly (the UI built it as a 3rd step, but SimSeverity is a Low/Med/High enum).
+
+**Issue** Visualization panel RenderView shows nothing
+The center “Battery Panel” Visualization Image has size 0xD and is not connected to the main camera or a RenderTexture. The 3D scene view isn’t feeding into it. This is the key visual missing from the Simulation panel — the 3D cell view inside the panel.
+
+**Issue** ThermalThumbnail cell_GroupTransform points to BatteryPack, not CellGroup
+The secondary thermal camera will orbit around the wrong center. CellGroup is the correct target (the actual cell meshes), not the BatteryPack parent (board load block etc).
+
+**Issue** WorldSpaceLabels: ESP32 label has NULL anchor
+The Billboard label “ESP32” has no target and doesn’t exist by that name? The ESP32 label is silently skipped. Minor but should be fixed or the slot removed.
+
+**Visual** Graph LineRenderers at size 0xD — won’t draw
+Each Graph cell RectTransform inside GraphPanel has size like “10x154” but the LineRenderer positions are calculated from RectTransform.rect.size — which is only valid after layout, since the rect is zero before layout. The initial rect may be zero. Need to call Rebuild() to a console after layout, or use CanvasForceUpdateCanvas().
+
+**Issue** SceneLightPulse BMS light color is RGB(1,0.405,0) but orange — should shift cooler when temp is high
+Mixer tuning at 22°C: The BMS light should be a warmer amber, not orange-red. The current tempFactor calculation has the right structure but the base color is too aggressive at rest.
+
+ORDERED FIX PLAN — DO NOT PROCEED UNTIL CONFIRMED
+
+**Fix 1** Fix navigation — wire Panel.Simulation to NavBtn_Simulation
+- Open both prefabs.
+- Make sure the root Panel.Simulation is set in its own NavController.Panels[5] (the Simulation slot). Verify Overview/Simulation toggle correctly shows/hides panels. Call SimulationController.SetSimPageOpen() on nav switch.
+
+**Fix 2** Move SimulationController + SimulationUI into correct hierarchy
+- Reparent the orphan SimulationController and SimulationUI components under BatteryPanel.
+- Move SimulationUI component to BatteryPanel. Assign all Inspector refs.
+
+**Fix 3** Wire the 3D View into a SimPanelCamera RenderTexture
+- SimPanelCamera already exists in the scene. Create a RendererTexture asset (1024*512), assign it as SimPanelCamera.targetTexture. Wire the SimulationUI.RenderView.image to the same texture. Position SimPanelCamera at the default orbit override angle. This makes the 3D cells live inside the simulation panel.
+
+**Fix 4** Fix ThermalThumbnail target — CellGroup, not BatteryPack
+- Set ThermalThumbnail.cell_GroupTransform = CellGroup.transform. Adjust camera offset so it frames just the 8 cells from a ¾ angle matching the screenshot reference.
+
+**Fix 5** Fix graph LineRenderer drawing — force layout before first Rebuild
+- Add CanvasForceUpdateCanvas() before LineRenderer.SetPositions(). Ensure RectTransform.rect is populated before graph positions are computed.
+
+**Fix 6** Verify all SimulationUI inspector refs and slider wiring
+- Check all 3 sliders and both dropdowns under SimulationUI. Resolve to Input fields for all 4 graph lines, alert SP when Simulation renderer throws, set ADD_SCENARIO adds a table row with all NULL refs found.
+
+**Fix 7** Fix ESP32 label anchor — verify GameObject name
+- Find the exact name of the ESP32 GameObject in the scene hierarchy. Update WorldSpaceLabels to use the correct name, or remove the dead slot if the GO doesn’t exist.
+
+**Fix 8** Light color tuning + full Play mode visual review
+- Adjust BMS board light base color to amber at rest. Take screenshots in all 4 states: Overview, Thermal, Balancing, and Simulation panel after running a sim. Compare against reference screenshot. Fix any remaining visual gaps.
+
+WHAT COMES AFTER THE FIXES
+
+Schematic view toggle
+The “SCHEMATIC VIEW” button exists in the UI but does nothing. Build a 2D flat schematic of 8 cells B+ B- with live SoC colors and test the 3D+2D/2D flat view switching toggles.
+
+Time scrubber
+Add a slider below the 3D view that lets you drag through the pre-computed simulation timeline. Clicking a graph snapshot should snap the timeline to that time. Use this much more useful than just watching playback.
+
+Export to CSV
+The EXPORT RESULTS button is wired in code but the file path (Application.persistentDataPath) might not be obvious to the user. Add a visible confirmation message showing where the file was saved.

@@ -1,0 +1,7 @@
+[mcp_servers.UnityMCP]
+command = 'C:\Users\asd21\.local\bin\uvx.exe'
+args = [
+    "--from",
+    "mcpforunityserver==9.7.3",
+    "mcp-for-unity",
+]
